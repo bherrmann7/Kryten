@@ -1,17 +1,44 @@
 # Kryten 🤖
 
-A Telegram fitness tracking bot powered by Anthropic's Claude API, with the
-personality of [Kryten from Red Dwarf](https://www.youtube.com/watch?v=8525OKIhwqk).
-
 > **Disclaimer:** This project is not affiliated with the BBC in any way whatsoever.
 > The naming is simply an homage to the creative works owned by the BBC.
+
+Kryten is a **focused microbot** — a pattern for building real-world natural
+language applications by pairing a full LLM with a deliberately small set of
+tools. It demonstrates how to get the intelligence of a frontier model (Claude
+Sonnet 4.5) while keeping costs low, the attack surface minimal, and the
+behavior predictable.
+
+The approach: give the LLM a personality, a clear job, and only the tools it
+needs. Let it handle all the messy natural language understanding — "Brian and
+I walked 4 miles in the snow" — while the application controls exactly what
+actions are possible.
+
+In this case, the personality is
+[Kryten from Red Dwarf](https://www.youtube.com/watch?v=8525OKIhwqk) and the
+job is fitness tracking over Telegram. But the pattern applies to any domain
+where you want natural language input driving a constrained set of operations.
+
+![Kryten Architecture](architecture.svg)
+
+### The Balance
+
+- **Capability**: Claude handles natural language understanding, personality,
+  context, and deciding which tool to call. You get the full power of a frontier
+  model for interpreting freeform human input and turning it into structured data.
+- **Cost**: Most interactions cost $0.01-0.02. Zero-token shortcuts (help,
+  usage, photos, access control) cost nothing. The bot only calls the API when
+  it actually needs intelligence.
+- **Safety**: Claude can only do 4 things: log exercises, query stats, fetch
+  photos, and report usage. No file access, no web browsing, no arbitrary code
+  execution. The tool definitions are the entire attack surface.
+
+## What It Does
 
 Track any exercise — pushups, planks, bike rides, runs, swimming — for yourself
 and friends. Supports photo proof, notes, group chats, and friendly competition.
 
-## What Kryten Can Do
-
-**Just talk to him naturally:**
+**Just talk to it naturally:**
 - *"I did 25 pushups"* → logged
 - *"Brian and I biked 10 miles on the rail trail"* → logged for both, with notes
 - *"30 second plank, felt hard"* → timed exercise with notes
@@ -23,10 +50,6 @@ and friends. Supports photo proof, notes, group chats, and friendly competition.
 - **Timed** — planks, wall sits, yoga...
 - **Distance** — biking, running, walking, swimming...
 
-**Group chat ready:**
-Add him to a group and he'll track everyone, encourage friendly competition,
-and let you log exercises for friends who aren't on Telegram yet.
-
 **Zero-cost commands** (no API tokens used):
 
 | Command | Description |
@@ -37,10 +60,6 @@ and let you log exercises for friends who aren't on Telegram yet.
 | `photos` or `/photos` | Send today's exercise photos |
 | `photos yesterday` | Send yesterday's exercise photos |
 | `photos 2026-02-15` | Send photos from a specific date |
-
-**Access control:**
-New users get a polite introduction and must be approved by the admin before
-they can chat with Kryten. Approval happens via Telegram reply — no web UI needed.
 
 ## Features
 
@@ -83,23 +102,7 @@ all options.
 | `ALLOWED_USERS` | No | Comma-separated pre-approved Telegram user IDs |
 | `MAX_HISTORY` | No | Conversation buffer size (default: 20) |
 
-## Architecture
-
-![Kryten Architecture](architecture.svg)
-
-Kryten is a **focused microbot** — it pairs a full LLM (Claude Sonnet 4.5)
-with a deliberately small set of tools. This represents a balance of three things:
-
-- **Capability**: Claude handles natural language understanding, personality,
-  context, and deciding which tool to call. You get the full power of a frontier
-  model for interpreting "Brian and I walked 4 miles in the snow" and turning
-  it into structured data.
-- **Cost**: Most interactions cost $0.01-0.02. Zero-token shortcuts (help,
-  usage, photos, access control) cost nothing. The bot only calls the API when
-  it actually needs intelligence.
-- **Safety**: Claude can only do 4 things: log exercises, query stats, fetch
-  photos, and report usage. No file access, no web browsing, no arbitrary code
-  execution. The tool definitions are the entire attack surface.
+## Implementation
 
 ### Two Files, No Frameworks
 
@@ -122,7 +125,7 @@ You can log exercises for other people by name ("Brian did 15 pushups").
 The person must have messaged the bot at least once so Kryten knows who
 they are.
 
-### Access Control Flow
+### Access Control
 
 1. Unknown user messages Kryten → gets a canned introduction (zero tokens)
 2. Admin receives a DM: "New access request from Jane. Reply YES to approve."
