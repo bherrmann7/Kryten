@@ -5,7 +5,7 @@
 </p>
 
 > **Disclaimer:** This project is not affiliated with the BBC in any way whatsoever.
-> The naming is simply an homage to the creative works owned by the BBC.
+> The naming is simply an homage to the creative works owned by the [BBC](https://www.youtube.com/watch?v=8525OKIhwqk).
 
 Kryten is a **focused microbot** — a pattern for building real-world natural
 language applications by combining three things:
