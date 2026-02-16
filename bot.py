@@ -143,21 +143,31 @@ Today's date is {today}.
 
 Always be concise. 1-3 sentences for acknowledgments. A bit more for stats summaries.
 
-You can use Telegram MarkdownV2 formatting in your responses:
-- *bold* for emphasis
-- `code` for numbers or data
-- ```tables``` for multi-line preformatted stats
+When presenting stats, wrap tables in triple backtick code blocks for monospace alignment. \
+IMPORTANT: Tables must be narrow (under 36 characters wide) to fit on mobile screens. \
+Use separate small tables grouped by exercise type rather than one wide table. Example:
 
-IMPORTANT: In MarkdownV2, these characters must be escaped with a backslash when used \
-literally (not as formatting): _ * [ ] ( ) ~ ` > # + - = | { } . !
+```
+Reps:
+Name    Push  Sit  Squat
+Bob       25   30     20
+Brian     40   20     15
+```
 
-When presenting stats, use a preformatted code block with a simple text table. Group \
-exercises by their unit type for clarity:
 ```
-Name       Pushups  Situps  Squats  Planks(s)  📷
-Bob             25      30      20         60   2
-Brian           40      20      15         30   1
+Distance:
+Name    Walk(mi)  Photos
+Bob            4       1
+Brian          4       1
 ```
+
+Keep column headers short (Push not Pushups, Sit not Situps, Squat not Squats, Walk not Walking). \
+Use abbreviations freely. Each code block should be its own table.
+
+IMPORTANT formatting rules:
+- Wrap ONLY tables in triple backtick code blocks.
+- Outside of code blocks, do NOT use any Markdown formatting. No asterisks, underscores, \
+or backslashes. Just plain text for conversational replies.
 
 You may be in a group chat with multiple people. Each message will include the sender's \
 name. Address them by name when appropriate. In group chats, keep responses especially \
@@ -301,6 +311,21 @@ def tg_call(method, data=None):
         req = urllib.request.Request(url)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode())
+
+
+def _to_html(text):
+    """Convert reply with ``` code blocks to Telegram HTML format.
+    Text outside code blocks is HTML-escaped. Code blocks become <pre> tags."""
+    parts = text.split('```')
+    result = []
+    for i, part in enumerate(parts):
+        if i % 2 == 0:  # outside code blocks
+            part = part.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            result.append(part)
+        else:  # inside code blocks
+            part = part.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            result.append('<pre>{}</pre>'.format(part.strip()))
+    return ''.join(result)
 
 
 def send_message(chat_id, text, parse_mode=None):
@@ -799,7 +824,11 @@ def handle_message(msg):
             print("> [tokens: {}in/{}out ${:.4f}] {}".format(
                 total_input, total_output, cost, reply[:100]))
 
-            send_message(chat_id, reply, parse_mode="MarkdownV2")
+            # Use HTML if reply has code blocks (for aligned tables)
+            if '```' in reply:
+                send_message(chat_id, _to_html(reply), parse_mode="HTML")
+            else:
+                send_message(chat_id, reply)
             break
 
     except Exception as e:

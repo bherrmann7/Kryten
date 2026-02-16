@@ -85,12 +85,36 @@ all options.
 
 ## Architecture
 
-Two files, no frameworks:
+![Kryten Architecture](architecture.svg)
 
-- **`bot.py`** — Telegram bot, Claude API client, tool execution, webhook/polling
+Kryten is a **focused microbot** — it pairs a full LLM (Claude Sonnet 4.5)
+with a deliberately small set of tools. This represents a balance of three things:
+
+- **Capability**: Claude handles natural language understanding, personality,
+  context, and deciding which tool to call. You get the full power of a frontier
+  model for interpreting "Brian and I walked 4 miles in the snow" and turning
+  it into structured data.
+- **Cost**: Most interactions cost $0.01-0.02. Zero-token shortcuts (help,
+  usage, photos, access control) cost nothing. The bot only calls the API when
+  it actually needs intelligence.
+- **Safety**: Claude can only do 4 things: log exercises, query stats, fetch
+  photos, and report usage. No file access, no web browsing, no arbitrary code
+  execution. The tool definitions are the entire attack surface.
+
+### Two Files, No Frameworks
+
+- **`bot.py`** — Telegram integration, Claude API client, tool execution, access control
 - **`db.py`** — SQLite database (exercises, users, photos, access control, API usage)
 
 Data stored in `data/kryten.db` (SQLite) and `data/photos/` (downloaded images).
+
+### Message Flow
+
+1. **Access check** — Is the user approved? If not, send a canned response (zero tokens)
+2. **Zero-token shortcut?** — Commands like `help`, `usage`, `photos` are handled
+   directly without calling Claude
+3. **Claude API call** — Message + conversation history sent to Claude with 4 tool
+   definitions. Claude decides what to do, calls tools, and responds in character
 
 ### Logging for Others
 
@@ -108,7 +132,7 @@ they are.
 
 ### Polling
 
-The bot uses long-polling (`python3 bot.py --poll`) to receive messages from
+The bot uses long-polling (`python3 bot.py`) to receive messages from
 Telegram. No webhook, domain, or HTTPS setup required.
 
 ## Group Chat Setup
