@@ -2,7 +2,25 @@
 
 import sqlite3
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
+
+# US Eastern time zone (handles EST/EDT automatically on Python 3.9+)
+try:
+    from zoneinfo import ZoneInfo
+    EASTERN = ZoneInfo("America/New_York")
+except ImportError:
+    # Python 3.8 fallback: fixed EST offset
+    EASTERN = timezone(timedelta(hours=-5))
+
+
+def now_eastern():
+    """Return the current datetime in US Eastern time."""
+    return datetime.now(EASTERN)
+
+
+def today_eastern():
+    """Return today's date in US Eastern time."""
+    return now_eastern().date()
 
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "kryten.db")
@@ -112,10 +130,12 @@ def find_user_by_name(name):
 
 def log_exercise(user_id, exercise, count, unit="reps", username=None, notes=None):
     """Log an exercise and return the new exercise row ID."""
+    now = now_eastern()
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO exercises (user_id, username, exercise, count, unit, notes) VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, username, exercise.lower().strip(), count, unit.lower().strip(), notes),
+        "INSERT INTO exercises (user_id, username, exercise, count, unit, notes, recorded_at, recorded_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, username, exercise.lower().strip(), count, unit.lower().strip(), notes,
+         now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d")),
     )
     exercise_id = cur.lastrowid
     conn.commit()
@@ -137,7 +157,8 @@ def add_exercise_photo(exercise_id, file_id, local_path=None):
 
 
 def get_stats(days=7, user_id=None):
-    """Get exercise stats for the last N days."""
+    """Get exercise stats for the last N days (Eastern time)."""
+    cutoff = (today_eastern() - timedelta(days=days - 1)).isoformat()
     conn = get_db()
     if user_id:
         rows = conn.execute(
@@ -146,10 +167,10 @@ def get_stats(days=7, user_id=None):
                FROM exercises e
                JOIN users u ON e.user_id = u.user_id
                LEFT JOIN exercise_photos ep ON e.id = ep.exercise_id
-               WHERE e.user_id = ? AND e.recorded_date >= date('now', ? || ' days')
+               WHERE e.user_id = ? AND e.recorded_date >= ?
                GROUP BY e.user_id, e.recorded_date, e.exercise, e.unit
                ORDER BY e.recorded_date, u.first_name""",
-            (user_id, -days),
+            (user_id, cutoff),
         ).fetchall()
     else:
         rows = conn.execute(
@@ -158,10 +179,10 @@ def get_stats(days=7, user_id=None):
                FROM exercises e
                JOIN users u ON e.user_id = u.user_id
                LEFT JOIN exercise_photos ep ON e.id = ep.exercise_id
-               WHERE e.recorded_date >= date('now', ? || ' days')
+               WHERE e.recorded_date >= ?
                GROUP BY e.user_id, e.recorded_date, e.exercise, e.unit
                ORDER BY e.recorded_date, u.first_name""",
-            (-days,),
+            (cutoff,),
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -185,7 +206,7 @@ def get_photos_for_date(date_str=None):
     when the same photo is attached to multiple users (shared workouts)."""
     conn = get_db()
     if not date_str:
-        date_str = date.today().isoformat()
+        date_str = today_eastern().isoformat()
     rows = conn.execute(
         """SELECT ep.file_id, ep.local_path, e.exercise, e.count, e.unit, e.notes,
                   u.first_name

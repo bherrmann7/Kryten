@@ -386,8 +386,7 @@ def download_photo(file_id):
 
 def call_claude(messages):
     """Call the Anthropic messages API. Returns the full response dict."""
-    from datetime import date as _date
-    system = SYSTEM_PROMPT.replace("{today}", _date.today().isoformat())
+    system = SYSTEM_PROMPT.replace("{today}", db.today_eastern().isoformat())
     payload = {
         "model": MODEL,
         "max_tokens": 1024,
@@ -539,9 +538,8 @@ def _send_help(chat_id):
 
 def _send_photos(chat_id, date_str=None):
     """Send all exercise photos for a given date (zero tokens)."""
-    from datetime import date as _date
     if not date_str:
-        date_str = _date.today().isoformat()
+        date_str = db.today_eastern().isoformat()
     photos = db.get_photos_for_date(date_str)
     if not photos:
         send_message(chat_id, "No photos recorded for {}.".format(date_str))
@@ -560,13 +558,14 @@ def _send_photos(chat_id, date_str=None):
 def _handle_photos_command(chat_id, text):
     """Parse photos command and send photos for the requested date.
     Accepts: photos, photos today, photos yesterday, photos 2026-02-15"""
-    from datetime import date as _date, timedelta
+    from datetime import timedelta
+    from datetime import date as _date
     # Strip the command prefix
     arg = text.replace("/photos", "").replace("photos", "").strip()
     if not arg or arg == "today":
-        date_str = _date.today().isoformat()
+        date_str = db.today_eastern().isoformat()
     elif arg == "yesterday":
-        date_str = (_date.today() - timedelta(days=1)).isoformat()
+        date_str = (db.today_eastern() - timedelta(days=1)).isoformat()
     else:
         # Try to parse as YYYY-MM-DD
         try:
