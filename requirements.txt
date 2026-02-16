@@ -1,0 +1,2 @@
+# No external dependencies — Kryten uses only the Python standard library.
+# Python 3.8+ required.

@@ -1,0 +1,122 @@
+# Kryten 🤖
+
+A Telegram fitness tracking bot powered by Anthropic's Claude API, with the
+personality of [Kryten from Red Dwarf](https://www.youtube.com/watch?v=8525OKIhwqk).
+
+> **Disclaimer:** This project is not affiliated with the BBC in any way whatsoever.
+> The naming is simply an homage to the creative works owned by the BBC.
+
+Track any exercise — pushups, planks, bike rides, runs, swimming — for yourself
+and friends. Supports photo proof, notes, group chats, and friendly competition.
+
+## What Kryten Can Do
+
+**Just talk to him naturally:**
+- *"I did 25 pushups"* → logged
+- *"Brian and I biked 10 miles on the rail trail"* → logged for both, with notes
+- *"30 second plank, felt hard"* → timed exercise with notes
+- Send a photo with a caption → attached as proof of exercise
+- *"How are we doing this week?"* → formatted stats table with photo counts
+
+**Any exercise type:**
+- **Reps** — pushups, situps, squats, pullups, burpees...
+- **Timed** — planks, wall sits, yoga...
+- **Distance** — biking, running, walking, swimming...
+
+**Group chat ready:**
+Add him to a group and he'll track everyone, encourage friendly competition,
+and let you log exercises for friends who aren't on Telegram yet.
+
+**Zero-cost commands** (no API tokens used):
+
+| Command | Description |
+|---------|-------------|
+| `help` or `/help` | Feature overview and usage examples |
+| `about` or `/about` | Same as help |
+| `usage` or `/usage` | API cost and token usage summary |
+| `photos` or `/photos` | Send today's exercise photos |
+| `photos yesterday` | Send yesterday's exercise photos |
+| `photos 2026-02-15` | Send photos from a specific date |
+
+**Access control:**
+New users get a polite introduction and must be approved by the admin before
+they can chat with Kryten. Approval happens via Telegram reply — no web UI needed.
+
+## Features
+
+- **Any exercise type** — reps, timed, distance, whatever you do
+- **Group chat support** — track multiple people, encourage competition
+- **Photo proof** — attach photos to exercise entries
+- **Notes** — free-text notes on each exercise ("felt great", "with 20lb vest")
+- **Flexible stats** — today, last 3 days, weekly, any range
+- **Log for others** — log exercises for friends by name ("Brian did 15 pushups")
+- **Conversation memory** — rolling 20-message buffer for natural follow-ups
+- **Cost tracking** — monitor API usage and spend
+- **Access control** — admin approval workflow for new users (zero tokens)
+- **Zero dependencies** — pure Python standard library (3.8+)
+
+## Quick Start
+
+1. **Create a Telegram bot** via [@BotFather](https://t.me/BotFather)
+2. **Get an Anthropic API key** from [console.anthropic.com](https://console.anthropic.com)
+3. **Configure:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your tokens
+   ```
+4. **Run:**
+   ```bash
+   python3 bot.py
+   ```
+
+## Configuration
+
+All config is via environment variables or `.env` file. See `.env.example` for
+all options.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Yes | From @BotFather |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
+| `CLAUDE_MODEL` | No | Model name (default: `claude-sonnet-4-5-20250929`) |
+| `ADMIN_USER_ID` | Yes | Your Telegram user ID (receives approval requests) |
+| `ALLOWED_USERS` | No | Comma-separated pre-approved Telegram user IDs |
+| `MAX_HISTORY` | No | Conversation buffer size (default: 20) |
+
+## Architecture
+
+Two files, no frameworks:
+
+- **`bot.py`** — Telegram bot, Claude API client, tool execution, webhook/polling
+- **`db.py`** — SQLite database (exercises, users, photos, access control, API usage)
+
+Data stored in `data/kryten.db` (SQLite) and `data/photos/` (downloaded images).
+
+### Logging for Others
+
+You can log exercises for other people by name ("Brian did 15 pushups").
+The person must have messaged the bot at least once so Kryten knows who
+they are.
+
+### Access Control Flow
+
+1. Unknown user messages Kryten → gets a canned introduction (zero tokens)
+2. Admin receives a DM: "New access request from Jane. Reply YES to approve."
+3. Admin replies YES → user is approved and notified
+4. Admin replies anything else → user is denied
+5. Denied/pending users get: "I'm sorry, I'm not yet approved to speak with you."
+
+### Polling
+
+The bot uses long-polling (`python3 bot.py --poll`) to receive messages from
+Telegram. No webhook, domain, or HTTPS setup required.
+
+## Group Chat Setup
+
+1. Add bot to group via BotFather
+2. Disable privacy mode: BotFather → `/mybots` → Bot Settings → Group Privacy → Turn off
+3. Bot will see all messages in the group
+
+## License
+
+MIT
