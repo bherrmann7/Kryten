@@ -4,13 +4,21 @@
 > The naming is simply an homage to the creative works owned by the BBC.
 
 Kryten is a **focused microbot** — a pattern for building real-world natural
-language applications by pairing a full LLM with a deliberately small set of
-tools. It demonstrates how to get the intelligence of a frontier model (Claude
-Sonnet 4.5) while keeping costs low, the attack surface minimal, and the
-behavior predictable.
+language applications by combining three things:
 
-The approach: give the LLM a personality, a clear job, and only the tools it
-needs. Let it handle all the messy natural language understanding — "Brian and
+1. **An LLM** (Claude Sonnet 4.5) for natural language understanding and personality
+2. **A small set of tools** for saving and recalling information (SQLite)
+3. **A chat client** (Telegram) as the user interface
+
+This project was influenced by the runaway success of
+[OpenClaw](https://github.com/openclaw/openclaw), which proved that connecting
+an LLM to a chat platform creates something genuinely useful. Kryten takes the
+same three ingredients but makes the opposite trade-off: instead of giving the
+LLM broad agent capabilities, it gives it a personality, a single job, and only
+the tools that job requires. The result is a bot that's cheap to run, predictable
+in behavior, and has a minimal attack surface.
+
+The LLM handles all the messy natural language understanding — "Brian and
 I walked 4 miles in the snow" — while the application controls exactly what
 actions are possible.
 
