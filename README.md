@@ -86,6 +86,12 @@ and friends. Supports photo proof, notes, group chats, and friendly competition.
 - **Access control** — admin approval workflow for new users (zero tokens)
 - **Zero dependencies** — pure Python standard library (3.8+)
 
+### Example from Telegram
+
+<p align="center">
+  <img src="telegram-example.png" alt="Kryten Telegram Example" width="400">
+</p>
+
 ## Quick Start
 
 1. **Create a Telegram bot** via [@BotFather](https://t.me/BotFather)
