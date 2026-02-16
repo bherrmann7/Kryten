@@ -101,10 +101,17 @@ and friends. Supports photo proof, notes, group chats, and friendly competition.
    cp .env.example .env
    # Edit .env with your API keys
    ```
-4. **Run:**
+4. **Run manually:**
    ```bash
    python3 bot.py
    ```
+5. **Or install as a macOS system service** (runs at boot, no login required):
+   ```bash
+   sudo cp com.kryten.bot.plist /Library/LaunchDaemons/
+   sudo chown root:wheel /Library/LaunchDaemons/com.kryten.bot.plist
+   sudo launchctl load /Library/LaunchDaemons/com.kryten.bot.plist
+   ```
+   Manage with: `sudo launchctl stop|start|kickstart -k system/com.kryten.bot`
 
 ## Configuration
 
