@@ -1,5 +1,9 @@
 # Kryten 🤖
 
+<p align="center">
+  <img src="kryten.jpg" alt="Kryten" width="400">
+</p>
+
 > **Disclaimer:** This project is not affiliated with the BBC in any way whatsoever.
 > The naming is simply an homage to the creative works owned by the BBC.
 
