@@ -99,7 +99,7 @@ and friends. Supports photo proof, notes, group chats, and friendly competition.
 3. **Configure:**
    ```bash
    cp .env.example .env
-   # Edit .env with your tokens
+   # Edit .env with your API keys
    ```
 4. **Run:**
    ```bash
