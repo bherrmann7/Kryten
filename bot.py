@@ -36,7 +36,7 @@ load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
+MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 TELEGRAM_API = "https://api.telegram.org/bot{}".format(TOKEN)
 
@@ -113,8 +113,9 @@ anything! \
 For reps-based exercises (pushups, situps, squats, pull-ups, etc.) use unit="reps". \
 For timed exercises (planks, wall sits, etc.) use unit="seconds" or "minutes". \
 For distance exercises (biking, running, walking, swimming) use unit="miles" or "km". \
+For body weight use unit="lbs" or "kg" and exercise="weight". \
 Normalize exercise names to simple lowercase forms: "pushups", "situps", "squats", \
-"planks", "pullups", "biking", "running", "walking", "swimming", "yoga", etc. \
+"planks", "pullups", "biking", "running", "walking", "swimming", "yoga", "weight", etc. \
 Be consistent — "push-ups" and "push ups" should both become "pushups". \
 If the user includes extra details (e.g. 'felt great', 'with 20lb vest', 'on the trail'), \
 capture that in the notes field. \
@@ -125,21 +126,35 @@ in a recent message, do NOT log the exercise again. Only log new exercises. \
 Stats data includes a "photos" count for each exercise — include a 📷 column in your \
 stats tables showing how many photos were attached (omit the column if all zeros).
 
-2. SHOW STATS: When someone asks for their stats, today's numbers, weekly progress, or \
+2. CORRECT EXISTING ENTRIES: When someone says a logged entry is wrong, or wants to \
+fix/update/adjust a previous entry, or wants to add a note (like a URL or comment) to \
+an existing entry, call the update_exercise tool. You can update the count, unit, notes, \
+and/or exercise name of the most recent matching entry for that exercise on that date. \
+To rename all occurrences of an exercise name across the entire database (e.g. consolidating \
+"bench_press" into "bench press"), use the rename_exercise tool instead.
+
+3. SHOW STATS: When someone asks for their stats, today's numbers, weekly progress, or \
 how everyone is doing, call the get_stats tool and present the results in a nicely \
 formatted way using markdown tables when appropriate.
 
-3. SHOW PHOTOS: When someone asks to see photos, pictures, or proof from a day, call \
+4. SHOW PHOTOS: When someone asks to see photos, pictures, or proof from a day, call \
 the get_photos tool with the date. The photos will be sent to the chat automatically — \
 you just need to add a brief comment about what was found. Today's date is available \
 from the current conversation context.
 
-4. SHOW COST: When someone asks about API cost or usage, call the get_usage tool.
+5. SHOW COST: When someone asks about API cost or usage, call the get_usage tool.
 
-5. GENERAL CHAT: For anything else, respond briefly in character. Keep it fun but \
+6. ALL-TIME SUMMARY: When someone asks for their overall totals, lifetime stats, \
+all-time summary, or a big-picture view of everything logged, call the get_all_time_stats \
+tool. This returns total amounts, session counts, and date ranges for every exercise \
+per user. Present the results in compact tables grouped by exercise type.
+
+7. GENERAL CHAT: For anything else, respond briefly in character. Keep it fun but \
 concise — this is Telegram, not a novel.
 
 Today's date is {today}.
+
+Always respond in English. Never use words or phrases from other languages.
 
 Always be concise. 1-3 sentences for acknowledgments. A bit more for stats summaries.
 
@@ -209,11 +224,13 @@ TOOLS = [
                     "enum": [
                         "reps", "seconds", "minutes", "hours",
                         "miles", "km", "meters", "yards", "laps", "sets",
+                        "lbs", "kg",
                     ],
                     "description": (
                         "The unit of measurement. Use 'reps' for countable exercises "
                         "(pushups, situps), 'seconds' or 'minutes' for timed exercises "
-                        "(planks, wall sits), 'miles' or 'km' for distance (biking, running)."
+                        "(planks, wall sits), 'miles' or 'km' for distance (biking, running), "
+                        "'lbs' or 'kg' for body weight."
                     ),
                 },
                 "notes": {
@@ -237,10 +254,56 @@ TOOLS = [
         },
     },
     {
+        "name": "update_exercise",
+        "description": (
+            "Update an existing exercise entry — correct the count/unit, or add/change notes. "
+            "Use this when someone wants to fix a previously logged exercise, adjust a value, "
+            "or attach a note (such as a URL or comment) to an existing entry."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exercise": {
+                    "type": "string",
+                    "description": "Exercise name, normalized (e.g. 'biking', 'pushups', 'weight').",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Date of the entry in YYYY-MM-DD format. Defaults to today if omitted.",
+                },
+                "count": {
+                    "type": "number",
+                    "description": "New count/amount. Omit to leave unchanged.",
+                },
+                "unit": {
+                    "type": "string",
+                    "description": "New unit. Omit to leave unchanged.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": (
+                        "New notes to set on the entry (replaces any existing notes). "
+                        "Pass an empty string to clear notes. Omit to leave notes unchanged."
+                    ),
+                },
+                "new_exercise": {
+                    "type": "string",
+                    "description": "New exercise name to rename this entry to. Omit to leave unchanged.",
+                },
+                "for_user": {
+                    "type": "string",
+                    "description": "Name of the person whose entry to update. Leave empty for the sender.",
+                },
+            },
+            "required": ["exercise"],
+        },
+    },
+    {
         "name": "get_stats",
         "description": (
-            "Get exercise stats for a flexible number of days. Use this for any stats "
-            "request: today (days=1), last 3 days (days=3), this week (days=7), etc."
+            "Get exercise stats for a flexible number of days, or for a specific date. "
+            "Use days for rolling windows (today=1, last 3 days=3, this week=7). "
+            "Use date for a specific day: yesterday, a specific date, etc."
         ),
         "input_schema": {
             "type": "object",
@@ -249,7 +312,16 @@ TOOLS = [
                     "type": "integer",
                     "description": (
                         "Number of days to look back. 1 = today only, "
-                        "3 = last 3 days, 7 = last week, etc."
+                        "3 = last 3 days, 7 = last week, etc. "
+                        "Ignored if date is provided."
+                    ),
+                },
+                "date": {
+                    "type": "string",
+                    "description": (
+                        "Specific date in YYYY-MM-DD format. Use this when someone asks "
+                        "about a specific day: yesterday, last Monday, etc. "
+                        "Takes precedence over days."
                     ),
                 },
                 "for_everyone": {
@@ -260,7 +332,7 @@ TOOLS = [
                     ),
                 },
             },
-            "required": ["days"],
+            "required": [],
         },
     },
     {
@@ -289,6 +361,104 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "delete_exercise",
+        "description": (
+            "Delete an exercise entry. Use this when someone wants to remove a "
+            "mistakenly logged exercise. Deletes the most recent matching entry "
+            "for that exercise on that date."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exercise": {
+                    "type": "string",
+                    "description": "Exercise name to delete (e.g. 'pushups', 'biking').",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Date of the entry in YYYY-MM-DD format. Defaults to today if omitted.",
+                },
+                "for_user": {
+                    "type": "string",
+                    "description": "Name of the person whose entry to delete. Leave empty for the sender.",
+                },
+            },
+            "required": ["exercise"],
+        },
+    },
+    {
+        "name": "rename_exercise",
+        "description": (
+            "Rename all occurrences of an exercise across the database. Use this to "
+            "normalize or consolidate exercise names, e.g. rename 'bench_press' to "
+            "'bench press'. Optionally scope to a single user."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "old_name": {
+                    "type": "string",
+                    "description": "The current exercise name to rename.",
+                },
+                "new_name": {
+                    "type": "string",
+                    "description": "The new exercise name to use.",
+                },
+                "for_user": {
+                    "type": "string",
+                    "description": (
+                        "Name of a specific user to scope the rename to. "
+                        "Leave empty to rename for all users."
+                    ),
+                },
+            },
+            "required": ["old_name", "new_name"],
+        },
+    },
+    {
+        "name": "get_exercise_log",
+        "description": (
+            "Get a full dump of every individual exercise entry ever recorded. "
+            "Use this when someone wants to see the complete raw log of all exercises, "
+            "review every entry, or audit the data. Can be filtered to one user."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "for_everyone": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, show entries for all users. "
+                        "If false, just the requesting user."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_all_time_stats",
+        "description": (
+            "Get all-time exercise totals across all dates. Shows total amount, "
+            "number of sessions, and date range for each exercise per user. "
+            "Use this when someone asks for their overall summary, lifetime totals, "
+            "all-time stats, or a big-picture view of everything they've done."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "for_everyone": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, show all-time stats for all users. "
+                        "If false, just the requesting user."
+                    ),
+                },
+            },
             "required": [],
         },
     },
@@ -337,10 +507,12 @@ def send_message(chat_id, text, parse_mode=None):
         payload["parse_mode"] = parse_mode
     try:
         tg_call("sendMessage", payload)
+        db.log_message(chat_id, None, "bot", "assistant", text)
     except Exception as e:
         if parse_mode:
             print("Markdown send failed, falling back to plain: {}".format(e))
             tg_call("sendMessage", {"chat_id": chat_id, "text": text})
+            db.log_message(chat_id, None, "bot", "assistant", text)
         else:
             raise
 
@@ -454,11 +626,44 @@ def execute_tool(tool_name, tool_input, user_id, username, chat_id):
             result["recorded"]["notes"] = notes
         return json.dumps(result)
 
+    elif tool_name == "update_exercise":
+        exercise = tool_input["exercise"]
+        date_str = tool_input.get("date", "") or db.today_eastern().isoformat()
+        count = tool_input.get("count")
+        unit = tool_input.get("unit")
+        notes = tool_input["notes"] if "notes" in tool_input else None
+        new_exercise = tool_input.get("new_exercise")
+        for_user = tool_input.get("for_user", "").strip()
+
+        if for_user:
+            target_id = db.find_user_by_name(for_user)
+            if not target_id:
+                return json.dumps({"error": "I don't know anyone named '{}'.".format(for_user)})
+            log_name = for_user
+        else:
+            target_id = user_id
+            log_name = username
+
+        updated = db.update_exercise(target_id, exercise, date_str, count, unit, notes, new_exercise)
+        if updated:
+            result = {"success": True, "updated": {"exercise": exercise, "date": date_str, "user": log_name}}
+            if count is not None:
+                result["updated"]["count"] = count
+            if unit is not None:
+                result["updated"]["unit"] = unit
+            if notes is not None:
+                result["updated"]["notes"] = notes
+            return json.dumps(result)
+        else:
+            return json.dumps({"error": "No entry found for '{}' on {} for {}.".format(
+                exercise, date_str, log_name)})
+
     elif tool_name == "get_stats":
         days = tool_input.get("days", 7)
+        date = tool_input.get("date", "").strip() or None
         for_everyone = tool_input.get("for_everyone", True)
-        stats = db.get_stats(days=days, user_id=None if for_everyone else user_id)
-        return json.dumps({"days": days, "stats": stats})
+        stats = db.get_stats(days=days, user_id=None if for_everyone else user_id, date=date)
+        return json.dumps({"date": date, "days": days, "stats": stats})
 
     elif tool_name == "get_photos":
         date_str = tool_input.get("date", "")
@@ -477,6 +682,46 @@ def execute_tool(tool_name, tool_input, user_id, username, chat_id):
                    for p in photos]
         return json.dumps({"date": date_str, "photo_count": len(photos),
                            "photos": summary})
+
+    elif tool_name == "delete_exercise":
+        exercise = tool_input["exercise"]
+        date_str = tool_input.get("date", "") or db.today_eastern().isoformat()
+        for_user = tool_input.get("for_user", "").strip()
+        if for_user:
+            target_id = db.find_user_by_name(for_user)
+            if not target_id:
+                return json.dumps({"error": "I don't know anyone named '{}'.".format(for_user)})
+            log_name = for_user
+        else:
+            target_id = user_id
+            log_name = username
+        deleted = db.delete_exercise(target_id, exercise, date_str)
+        if deleted:
+            return json.dumps({"success": True, "deleted": {"exercise": exercise, "date": date_str, "user": log_name}})
+        else:
+            return json.dumps({"error": "No entry found for '{}' on {} for {}.".format(exercise, date_str, log_name)})
+
+    elif tool_name == "rename_exercise":
+        old_name = tool_input["old_name"]
+        new_name = tool_input["new_name"]
+        for_user = tool_input.get("for_user", "").strip()
+        target_id = None
+        if for_user:
+            target_id = db.find_user_by_name(for_user)
+            if not target_id:
+                return json.dumps({"error": "I don't know anyone named '{}'.".format(for_user)})
+        count = db.rename_exercise(old_name, new_name, user_id=target_id)
+        return json.dumps({"success": True, "renamed": {"from": old_name, "to": new_name, "rows_updated": count}})
+
+    elif tool_name == "get_exercise_log":
+        for_everyone = tool_input.get("for_everyone", True)
+        entries = db.get_exercise_log(user_id=None if for_everyone else user_id)
+        return json.dumps({"total_entries": len(entries), "entries": entries})
+
+    elif tool_name == "get_all_time_stats":
+        for_everyone = tool_input.get("for_everyone", True)
+        stats = db.get_all_time_stats(user_id=None if for_everyone else user_id)
+        return json.dumps({"stats": stats})
 
     elif tool_name == "get_usage":
         summary = db.get_usage_summary()
@@ -735,6 +980,8 @@ def handle_message(msg):
     if not text:
         return
 
+    db.log_message(chat_id, user_id, username, "user", text)
+
     # Access control
     if not _check_access(msg, chat_id, user_id, username, user, is_group):
         return
@@ -869,8 +1116,11 @@ def poll_loop():
         except KeyboardInterrupt:
             raise
         except Exception as e:
-            print("Poll error: {}".format(e))
-            time.sleep(5)
+            if "timed out" in str(e).lower():
+                pass  # normal long-poll expiry, reconnect immediately
+            else:
+                print("Poll error: {}".format(e))
+                time.sleep(5)
 
 
 # ---------------------------------------------------------------------------

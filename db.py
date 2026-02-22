@@ -87,6 +87,19 @@ def init_db():
             resolved_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER,
+            username TEXT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_messages_chat
+            ON messages(chat_id, created_at);
+
         CREATE INDEX IF NOT EXISTS idx_exercises_user_date
             ON exercises(user_id, recorded_date);
         CREATE INDEX IF NOT EXISTS idx_exercises_date
@@ -156,9 +169,16 @@ def add_exercise_photo(exercise_id, file_id, local_path=None):
 
 
 
-def get_stats(days=7, user_id=None):
-    """Get exercise stats for the last N days (Eastern time)."""
-    cutoff = (today_eastern() - timedelta(days=days - 1)).isoformat()
+def get_stats(days=7, user_id=None, date=None):
+    """Get exercise stats for the last N days (Eastern time), or for a specific date."""
+    if date:
+        cutoff = end = date
+        date_clause = "e.recorded_date = ?"
+        date_param = date
+    else:
+        cutoff = (today_eastern() - timedelta(days=days - 1)).isoformat()
+        date_clause = "e.recorded_date >= ?"
+        date_param = cutoff
     conn = get_db()
     if user_id:
         rows = conn.execute(
@@ -167,10 +187,10 @@ def get_stats(days=7, user_id=None):
                FROM exercises e
                JOIN users u ON e.user_id = u.user_id
                LEFT JOIN exercise_photos ep ON e.id = ep.exercise_id
-               WHERE e.user_id = ? AND e.recorded_date >= ?
+               WHERE e.user_id = ? AND {}
                GROUP BY e.user_id, e.recorded_date, e.exercise, e.unit
-               ORDER BY e.recorded_date, u.first_name""",
-            (user_id, cutoff),
+               ORDER BY e.recorded_date, u.first_name""".format(date_clause),
+            (user_id, date_param),
         ).fetchall()
     else:
         rows = conn.execute(
@@ -179,15 +199,159 @@ def get_stats(days=7, user_id=None):
                FROM exercises e
                JOIN users u ON e.user_id = u.user_id
                LEFT JOIN exercise_photos ep ON e.id = ep.exercise_id
-               WHERE e.recorded_date >= ?
+               WHERE {}
                GROUP BY e.user_id, e.recorded_date, e.exercise, e.unit
-               ORDER BY e.recorded_date, u.first_name""",
-            (cutoff,),
+               ORDER BY e.recorded_date, u.first_name""".format(date_clause),
+            (date_param,),
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
+
+
+def get_exercise_log(user_id=None):
+    """Get every individual exercise entry, optionally filtered by user."""
+    conn = get_db()
+    if user_id:
+        rows = conn.execute(
+            """SELECT u.first_name, e.recorded_date, e.exercise, e.count, e.unit, e.notes
+               FROM exercises e
+               JOIN users u ON e.user_id = u.user_id
+               WHERE e.user_id = ?
+               ORDER BY e.recorded_date, e.recorded_at""",
+            (user_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT u.first_name, e.recorded_date, e.exercise, e.count, e.unit, e.notes
+               FROM exercises e
+               JOIN users u ON e.user_id = u.user_id
+               ORDER BY e.recorded_date, e.recorded_at"""
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_time_stats(user_id=None):
+    """Get all-time exercise totals, grouped by user and exercise."""
+    conn = get_db()
+    if user_id:
+        rows = conn.execute(
+            """SELECT u.first_name, e.exercise, e.unit, SUM(e.count) as total,
+                      COUNT(*) as sessions, MIN(e.recorded_date) as first_date,
+                      MAX(e.recorded_date) as last_date
+               FROM exercises e
+               JOIN users u ON e.user_id = u.user_id
+               WHERE e.user_id = ?
+               GROUP BY e.user_id, e.exercise, e.unit
+               ORDER BY u.first_name, e.exercise""",
+            (user_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT u.first_name, e.exercise, e.unit, SUM(e.count) as total,
+                      COUNT(*) as sessions, MIN(e.recorded_date) as first_date,
+                      MAX(e.recorded_date) as last_date
+               FROM exercises e
+               JOIN users u ON e.user_id = u.user_id
+               GROUP BY e.user_id, e.exercise, e.unit
+               ORDER BY u.first_name, e.exercise"""
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def log_message(chat_id, user_id, username, role, content):
+    """Persist a message (role='user' or 'assistant') to the messages table."""
+    now = now_eastern()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO messages (chat_id, user_id, username, role, content, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (chat_id, user_id, username, role, content, now.strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_exercise(user_id, exercise, date_str, count=None, unit=None, notes=None, new_exercise=None):
+    """Update the most recent matching exercise entry for a user on a given date.
+    Pass count/unit/notes/new_exercise to change them; pass None to leave unchanged.
+    Pass empty string for notes to clear it.
+    Returns the number of rows updated."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT id FROM exercises
+           WHERE user_id = ? AND exercise = ? AND recorded_date = ?
+           ORDER BY recorded_at DESC LIMIT 1""",
+        (user_id, exercise.lower().strip(), date_str),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return 0
+    fields = []
+    values = []
+    if count is not None:
+        fields.append("count = ?")
+        values.append(count)
+    if unit is not None:
+        fields.append("unit = ?")
+        values.append(unit.lower().strip())
+    if notes is not None:
+        fields.append("notes = ?")
+        values.append(notes.strip() or None)
+    if new_exercise is not None:
+        fields.append("exercise = ?")
+        values.append(new_exercise.lower().strip())
+    if not fields:
+        conn.close()
+        return 0
+    values.append(row["id"])
+    conn.execute("UPDATE exercises SET {} WHERE id = ?".format(", ".join(fields)), values)
+    conn.commit()
+    conn.close()
+    return 1
+
+
+def delete_exercise(user_id, exercise, date_str):
+    """Delete the most recent matching exercise entry for a user on a given date.
+    Also removes any attached photos. Returns the number of rows deleted."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT id FROM exercises
+           WHERE user_id = ? AND exercise = ? AND recorded_date = ?
+           ORDER BY recorded_at DESC LIMIT 1""",
+        (user_id, exercise.lower().strip(), date_str),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return 0
+    conn.execute("DELETE FROM exercise_photos WHERE exercise_id = ?", (row["id"],))
+    conn.execute("DELETE FROM exercises WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return 1
+
+
+def rename_exercise(old_name, new_name, user_id=None):
+    """Rename all occurrences of an exercise. Optionally scoped to one user.
+    Returns the number of rows updated."""
+    conn = get_db()
+    if user_id:
+        cur = conn.execute(
+            "UPDATE exercises SET exercise = ? WHERE exercise = ? AND user_id = ?",
+            (new_name.lower().strip(), old_name.lower().strip(), user_id),
+        )
+    else:
+        cur = conn.execute(
+            "UPDATE exercises SET exercise = ? WHERE exercise = ?",
+            (new_name.lower().strip(), old_name.lower().strip()),
+        )
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return count
 
 
 def log_api_usage(user_id, input_tokens, output_tokens, model, cost_usd=None):
